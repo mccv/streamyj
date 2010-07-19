@@ -16,8 +16,8 @@ case object ValueFalse extends StreamyToken
 case object ValueTrue extends StreamyToken
 case object ValueNull extends StreamyToken
 case class ValueScalar(value: Any) extends StreamyToken
-case class ValueLong(override val value: Long) extends ValueScalar(value.toString)
-case class ValueDouble(override val value: Double) extends ValueScalar(value.toString)
+case class ValueLong(override val value: Long) extends ValueScalar(value)
+case class ValueDouble(override val value: Double) extends ValueScalar(value)
 case class ValueString(override val value: String) extends ValueScalar(value)
 
 
@@ -32,8 +32,6 @@ class Streamy(s: String) {
   val reader = factory.createJsonParser(s)
 
   var token:StreamyToken = null
-  var fieldName:String = null
-  var nestingLevel = 0
 
   def tokenToCaseClass(token: JsonToken) = token match {
     case START_ARRAY => StartArray
