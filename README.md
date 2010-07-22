@@ -7,8 +7,9 @@ to be significantly faster than GSON, which seems to be the most
 popular non-streaming JSON parser available.
 
 StreamyJ makes it easy to write idiomatic Scala parsers using Jackson by
-* Converting JsonToken constants to case classes, allowing pattern matching
-* Providing a mechanism to provide partial functions to the parser to take action
+
+*   Converting JsonToken constants to case classes, allowing pattern matching
+*   Providing a mechanism to provide partial functions to the parser to take action
 on specific parsed items.
 
 It's easiest to show with an example
@@ -18,8 +19,9 @@ It's easiest to show with an example
       case FieldName("bar") => println(s.readField())
     }
 
-In this case, when the parser encounters a JsonToken.FIELD_NAME token, and the 
-current field name is "bar", the println(s.readField()) method is invoked.  Simple enough.
+In this case, we call obj() on the Streamy object to tell the parser to read the current object.  
+The case statements tell Streamy to print the current field value when the field name is "bar".
+Simple enough.
 
 A slightly more complex example
 
@@ -48,7 +50,7 @@ Parsing arrays is also handled.
       }
     }
 
-Parsing methods can also be defined and used without the {} syntaxxs
+Parsing methods can also be defined and used without the {} syntax
 
     val printfield:Streamy.ParseFunc = {
       case FieldName(s) => println("hit field " + s)
