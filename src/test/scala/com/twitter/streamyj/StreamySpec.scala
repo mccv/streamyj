@@ -116,6 +116,18 @@ object StreamySpec extends Specification {
       foo must be_==(2)
     }
 
+    "handle embedded objects and arrays" in {
+      val s = new Streamy("""{"id":1, "embed":{"foo":"bar", "baz":{"baz":1}, "arr":[[1],2,3,4]},"id2":2}""")
+      var id = 0L
+      var id2 = 0L
+      s \ {
+        case FieldName("id") => id = s.readLongField()
+        case FieldName("id2") => id2 = s.readLongField()
+      }
+      id must be_==(1)
+      id2 must be_==(2)
+    }
+
     "work on a tweet" in {
       val s = new Streamy(unAnnotatedJSON)
 
