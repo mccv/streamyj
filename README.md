@@ -43,12 +43,12 @@ Parsing arrays is also handled.
     s.obj {
       case FieldName("bar") => {
         s.arr {
-	  case ValueLong(l) => println(l)
-	}
+          case ValueLong(l) => println(l)
+        }
       }
     }
 
-Parsing methods can also be defined and 
+Parsing methods can also be defined and used without the {} syntaxxs
 
     val printfield:Streamy.ParseFunc = {
       case FieldName(s) => println("hit field " + s)
@@ -64,11 +64,11 @@ as well as the current Streamy token
       case FieldName("bar") => println("bar is " + s.readLongField())
       case FieldName("baz") => {
         println(s.next())
-	s.token match {
-	  case StartObject => println("I'm at an object start")
-	  case _ => println("I'm not at an object start")
-	}
-	s.readObject(s.eat)
+        s.token match {
+          case StartObject => println("I'm at an object start")
+          case _ => println("I'm not at an object start")
+        }
+        s.readObject(s.eat)
       }
     }
     
