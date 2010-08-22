@@ -1,6 +1,7 @@
 package com.twitter.streamyj
 
 import java.lang.reflect._
+import scala.collection.mutable
 import scala.reflect.Manifest
 import org.codehaus.jackson.JsonProcessingException
 import org.objenesis.ObjenesisStd
@@ -11,6 +12,41 @@ class StreamyUnpacker {
   val objenesis = new ObjenesisStd()
   var ignoreExtraFields = false
 
+  def coerce[A, B](name: String, obj: A, cls: Class[B])(implicit manifest: Manifest[A]): B = {
+    if (manifest.erasure == classOf[Long]) {
+      coerceLong(name, cls, obj.asInstanceOf[Long])
+    } else {
+      throw new JsonUnpackingException("foo")
+    }
+  }
+
+  def coerceLong[T](name: String, cls: Class[T], value: Long): T = {
+    (if (cls == classOf[Int]) {
+      value.toInt
+    } else if (cls == classOf[Long]) {
+      value
+    } else if (cls == classOf[Short]) {
+      value.toShort
+    } else if (cls == classOf[Char]) {
+      value.toChar
+    } else if (cls == classOf[Byte]) {
+      value.toByte
+    } else if (cls == classOf[Float]) {
+      value.toFloat
+    } else if (cls == classOf[Double]) {
+      value.toDouble
+    } else if (cls == classOf[String]) {
+      value.toString
+    } else if (cls == classOf[BigInt]) {
+      BigInt(value)
+    } else if (cls == classOf[BigDecimal]) {
+      BigDecimal(value)
+    } else {
+      throw new JsonUnpackingException("Missing field conversion: " + name + " of type " +
+                                       cls + " missing conversion from long")
+    }).asInstanceOf[T]
+  }
+
   /*
   def methodsMatching(obj: AnyRef, name: String) = {
     obj.getClass.getMethods.find { method =>
@@ -20,33 +56,6 @@ class StreamyUnpacker {
     }.toList
   }
 */
-  def setLongField[T](obj: T, field: Field, value: Long) {
-    val t = field.getType
-    if (t == classOf[Int]) {
-      field.setInt(obj, value.toInt)
-    } else if (t == classOf[Long]) {
-      field.setLong(obj, value)
-    } else if (t == classOf[Short]) {
-      field.setShort(obj, value.toShort)
-    } else if (t == classOf[Char]) {
-      field.setChar(obj, value.toChar)
-    } else if (t == classOf[Byte]) {
-      field.setByte(obj, value.toByte)
-    } else if (t == classOf[Float]) {
-      field.setFloat(obj, value.toFloat)
-    } else if (t == classOf[Double]) {
-      field.setDouble(obj, value.toDouble)
-    } else if (t == classOf[String]) {
-      field.set(obj, value.toString)
-    } else if (t == classOf[BigInt]) {
-      field.set(obj, BigInt(value))
-    } else if (t == classOf[BigDecimal]) {
-      field.set(obj, BigDecimal(value))
-    } else {
-      throw new JsonUnpackingException("Missing field conversion: " + field.getName + " of type " +
-                                       field.getType.toString + " missing conversion from long")
-    }
-  }
 
   def setDoubleField[T](obj: T, field: Field, value: Double) {
     val t = field.getType
@@ -116,11 +125,12 @@ class StreamyUnpacker {
 
   def setField[T](obj: T, field: Field, streamy: Streamy) {
     streamy.next() match {
-      case ValueLong(x) => setLongField(obj, field, x)
+      case ValueLong(x) => field.set(obj, coerce(field.getName, x, field.getType))
       case ValueDouble(x) => setDoubleField(obj, field, x)
       case ValueString(x) => setStringField(obj, field, x)
       case ValueFalse => setBooleanField(obj, field, false)
       case ValueTrue => setBooleanField(obj, field, true)
+//      case StartArray => setArrayField(obj, field, getArray(streamy))
       case x =>
         throw new JsonUnpackingException("Unexpected token: " + x)
 
