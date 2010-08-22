@@ -32,34 +32,96 @@ class StreamyUnpacker {
       field.setChar(obj, value.toChar)
     } else if (t == classOf[Byte]) {
       field.setByte(obj, value.toByte)
+    } else if (t == classOf[Float]) {
+      field.setFloat(obj, value.toFloat)
+    } else if (t == classOf[Double]) {
+      field.setDouble(obj, value.toDouble)
+    } else if (t == classOf[String]) {
+      field.set(obj, value.toString)
+    } else if (t == classOf[BigInt]) {
+      field.set(obj, BigInt(value))
+    } else if (t == classOf[BigDecimal]) {
+      field.set(obj, BigDecimal(value))
     } else {
       throw new JsonUnpackingException("Missing field conversion: " + field.getName + " of type " +
                                        field.getType.toString + " missing conversion from long")
     }
   }
 
+  def setDoubleField[T](obj: T, field: Field, value: Double) {
+    val t = field.getType
+    if (t == classOf[Int]) {
+      field.setInt(obj, value.toInt)
+    } else if (t == classOf[Long]) {
+      field.setLong(obj, value.toLong)
+    } else if (t == classOf[Short]) {
+      field.setShort(obj, value.toShort)
+    } else if (t == classOf[Char]) {
+      field.setChar(obj, value.toChar)
+    } else if (t == classOf[Byte]) {
+      field.setByte(obj, value.toByte)
+    } else if (t == classOf[Float]) {
+      field.setFloat(obj, value.toFloat)
+    } else if (t == classOf[Double]) {
+      field.setDouble(obj, value)
+    } else if (t == classOf[String]) {
+      field.set(obj, value.toString)
+    } else if (t == classOf[BigInt]) {
+      field.set(obj, BigInt(value.toLong))
+    } else if (t == classOf[BigDecimal]) {
+      field.set(obj, BigDecimal(value))
+    } else {
+      throw new JsonUnpackingException("Missing field conversion: " + field.getName + " of type " +
+                                       field.getType.toString + " missing conversion from double")
+    }
+  }
+
+  def setStringField[T](obj: T, field: Field, value: String) {
+    val t = field.getType
+    if (t == classOf[Int]) {
+      field.setInt(obj, value.toInt)
+    } else if (t == classOf[Long]) {
+      field.setLong(obj, value.toLong)
+    } else if (t == classOf[Short]) {
+      field.setShort(obj, value.toShort)
+    } else if (t == classOf[Char]) {
+      field.setChar(obj, value.toInt.toChar)
+    } else if (t == classOf[Byte]) {
+      field.setByte(obj, value.toByte)
+    } else if (t == classOf[Float]) {
+      field.setFloat(obj, value.toFloat)
+    } else if (t == classOf[Double]) {
+      field.setDouble(obj, value.toDouble)
+    } else if (t == classOf[String]) {
+      field.set(obj, value)
+    } else if (t == classOf[BigInt]) {
+      field.set(obj, BigInt(value))
+    } else if (t == classOf[BigDecimal]) {
+      field.set(obj, BigDecimal(value))
+    } else {
+      throw new JsonUnpackingException("Missing field conversion: " + field.getName + " of type " +
+                                       field.getType.toString + " missing conversion from string")
+    }
+  }
+
   def setField[T](obj: T, field: Field, streamy: Streamy) {
     streamy.next() match {
-      case ValueLong(x) =>
-        setLongField(obj, field, x)
+      case ValueLong(x) => setLongField(obj, field, x)
+      case ValueDouble(x) => setDoubleField(obj, field, x)
+      case ValueString(x) => setStringField(obj, field, x)
+      case x =>
+        throw new JsonUnpackingException("Unexpected token: " + x)
 
 /*
       case object StartArray extends StreamyToken
       case object EndArray extends StreamyToken
       case object StartObject extends StreamyToken
       case object EndObject extends StreamyToken
-      case class FieldName(name: String) extends StreamyToken
-      case object NotAvailable extends StreamyToken
       case object ValueFalse extends StreamyToken
       case object ValueTrue extends StreamyToken
       case object ValueNull extends StreamyToken
-      case class ValueDouble(override val value: Double) extends ValueScalar(value)
-      case class ValueString(override val value: String) extends ValueScalar(value)
 */
 
-//      case x: BigDecimal =>
-//      case x: Boolean =>
-//      case x: String =>
       // null
       // array, object
     }

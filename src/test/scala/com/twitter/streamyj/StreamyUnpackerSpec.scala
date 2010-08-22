@@ -23,9 +23,70 @@ import scala.collection.immutable
 object StreamyUnpackerSpec extends Specification {
   "StreamyUnpacker" should {
     "object of ints" in {
-      case class Point(x: Int, y: Int)
-      StreamyUnpacker[Point]("""{"x":50,"y":25}""") mustEqual Point(50, 25)
+      val data = """{"x":50,"y":25}"""
 
+      case class Point(x: Int, y: Int)
+      StreamyUnpacker[Point](data) mustEqual Point(50, 25)
+
+      case class LPoint(x: Long, y: Int)
+      StreamyUnpacker[LPoint](data) mustEqual LPoint(50L, 25)
+
+      case class BPoint(x: Byte, y: Byte)
+      StreamyUnpacker[BPoint](data) mustEqual BPoint(50.toByte, 25.toByte)
+
+      case class FPoint(x: Float, y: Double)
+      StreamyUnpacker[FPoint](data) mustEqual FPoint(50.0f, 25.0)
+
+      case class SPoint(x: String, y: Int)
+      StreamyUnpacker[SPoint](data) mustEqual SPoint("50", 25)
+
+      case class BIPoint(x: BigInt, y: BigDecimal)
+      StreamyUnpacker[BIPoint](data) mustEqual BIPoint(BigInt(50), BigDecimal(25))
     }
+
+    "object of doubles" in {
+      val data = """{"x":50.0,"y":25.0}"""
+
+      case class Point(x: Int, y: Int)
+      StreamyUnpacker[Point](data) mustEqual Point(50, 25)
+
+      case class LPoint(x: Long, y: Int)
+      StreamyUnpacker[LPoint](data) mustEqual LPoint(50L, 25)
+
+      case class BPoint(x: Byte, y: Byte)
+      StreamyUnpacker[BPoint](data) mustEqual BPoint(50.toByte, 25.toByte)
+
+      case class FPoint(x: Float, y: Double)
+      StreamyUnpacker[FPoint](data) mustEqual FPoint(50.0f, 25.0)
+
+      case class SPoint(x: String, y: Int)
+      StreamyUnpacker[SPoint](data) mustEqual SPoint("50.0", 25)
+
+      case class BIPoint(x: BigInt, y: BigDecimal)
+      StreamyUnpacker[BIPoint](data) mustEqual BIPoint(BigInt(50), BigDecimal(25))
+    }
+
+    "object of strings" in {
+      val data = """{"x":"50","y":"25"}"""
+
+      case class Point(x: Int, y: Int)
+      StreamyUnpacker[Point](data) mustEqual Point(50, 25)
+
+      case class LPoint(x: Long, y: Int)
+      StreamyUnpacker[LPoint](data) mustEqual LPoint(50L, 25)
+
+      case class BPoint(x: Byte, y: Byte)
+      StreamyUnpacker[BPoint](data) mustEqual BPoint(50.toByte, 25.toByte)
+
+      case class FPoint(x: Float, y: Double)
+      StreamyUnpacker[FPoint](data) mustEqual FPoint(50.0f, 25.0)
+
+      case class SPoint(x: String, y: Int)
+      StreamyUnpacker[SPoint](data) mustEqual SPoint("50", 25)
+
+      case class BIPoint(x: BigInt, y: BigDecimal)
+      StreamyUnpacker[BIPoint](data) mustEqual BIPoint(BigInt(50), BigDecimal(25))
+    }
+
   }
 }
