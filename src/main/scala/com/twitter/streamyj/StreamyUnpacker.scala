@@ -22,6 +22,8 @@ class StreamyUnpacker {
       coerceDouble(name, cls, obj.asInstanceOf[Double])
     } else if (manifest.erasure == classOf[String]) {
       coerceString(name, cls, obj.asInstanceOf[String])
+    } else if (manifest.erasure == classOf[Boolean]) {
+      coerceBoolean(name, cls, obj.asInstanceOf[Boolean])
     } else {
       throw new JsonUnpackingException("foo")
     }
@@ -106,26 +108,13 @@ class StreamyUnpacker {
     rv.asInstanceOf[T]
   }
 
-  /*
-  def methodsMatching(obj: AnyRef, name: String) = {
-    obj.getClass.getMethods.find { method =>
-      method.getName == name &&
-        method.getReturnType == classOf[Unit] &&
-        method.getParameterTypes.size == 1
-    }.toList
-  }
-*/
-
-
-
-  def setBooleanField[T](obj: T, field: Field, value: Boolean) {
-    val t = field.getType
-    if (t == classOf[Boolean]) {
-      field.setBoolean(obj, value)
+  private def coerceBoolean[T](name: String, cls: Class[T], value: Boolean): T = {
+    val rv: Any = if (cls == classOf[Boolean]) {
+      value
     } else {
-      throw new JsonUnpackingException("Missing field conversion: " + field.getName + " of type " +
-                                       field.getType.toString + " missing conversion from boolean")
+      throw new JsonUnpackingException(name, cls, "boolean")
     }
+    rv.asInstanceOf[T]
   }
 
   def setField[T](obj: T, field: Field, streamy: Streamy) {
@@ -133,8 +122,8 @@ class StreamyUnpacker {
       case ValueLong(x) => field.set(obj, coerce(field.getName, x, field.getType))
       case ValueDouble(x) => field.set(obj, coerce(field.getName, x, field.getType))
       case ValueString(x) => field.set(obj, coerce(field.getName, x, field.getType))
-      case ValueFalse => setBooleanField(obj, field, false)
-      case ValueTrue => setBooleanField(obj, field, true)
+      case ValueFalse => field.set(obj, coerce(field.getName, false, field.getType))
+      case ValueTrue => field.set(obj, coerce(field.getName, true, field.getType))
 //      case StartArray => setArrayField(obj, field, getArray(streamy))
       case x =>
         throw new JsonUnpackingException("Unexpected token: " + x)
