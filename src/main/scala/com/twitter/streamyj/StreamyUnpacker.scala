@@ -104,11 +104,23 @@ class StreamyUnpacker {
     }
   }
 
+  def setBooleanField[T](obj: T, field: Field, value: Boolean) {
+    val t = field.getType
+    if (t == classOf[Boolean]) {
+      field.setBoolean(obj, value)
+    } else {
+      throw new JsonUnpackingException("Missing field conversion: " + field.getName + " of type " +
+                                       field.getType.toString + " missing conversion from boolean")
+    }
+  }
+
   def setField[T](obj: T, field: Field, streamy: Streamy) {
     streamy.next() match {
       case ValueLong(x) => setLongField(obj, field, x)
       case ValueDouble(x) => setDoubleField(obj, field, x)
       case ValueString(x) => setStringField(obj, field, x)
+      case ValueFalse => setBooleanField(obj, field, false)
+      case ValueTrue => setBooleanField(obj, field, true)
       case x =>
         throw new JsonUnpackingException("Unexpected token: " + x)
 

@@ -88,5 +88,10 @@ object StreamyUnpackerSpec extends Specification {
       StreamyUnpacker[BIPoint](data) mustEqual BIPoint(BigInt(50), BigDecimal(25))
     }
 
+    "object of booleans" in {
+      case class CryForMe(cry: Boolean)
+      StreamyUnpacker[CryForMe]("""{"cry":false}""") mustEqual CryForMe(false)
+      StreamyUnpacker[CryForMe]("""{"cry":true}""") mustEqual CryForMe(true)
+    }
   }
 }
