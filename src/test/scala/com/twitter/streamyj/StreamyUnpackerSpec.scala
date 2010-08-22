@@ -93,5 +93,22 @@ object StreamyUnpackerSpec extends Specification {
       StreamyUnpacker[CryForMe]("""{"cry":false}""") mustEqual CryForMe(false)
       StreamyUnpacker[CryForMe]("""{"cry":true}""") mustEqual CryForMe(true)
     }
+
+    "object of arrays" in {
+      val data = """{"name":"Santa","grades":[95, 79, 88, 90]}"""
+
+      case class SeqGrades(name: String, grades: Seq[Int])
+      StreamyUnpacker[SeqGrades](data) mustEqual SeqGrades("Santa", List(95, 79, 88, 90).toSeq)
+
+      case class ListGrades(name: String, grades: List[Int])
+      StreamyUnpacker[ListGrades](data) mustEqual ListGrades("Santa", List(95, 79, 88, 90))
+
+      case class ArrayGrades(name: String, grades: Array[Int])
+      StreamyUnpacker[ArrayGrades](data).grades.toList mustEqual List(95, 79, 88, 90)
+
+      val data2 = """{"name":"Santa","friends":["Rudolph","Frosty"]}"""
+      case class ArrayFriends(name: String, friends: Array[String])
+      StreamyUnpacker[ArrayFriends](data2).friends.toList mustEqual List("Rudolph", "Frosty")
+    }
   }
 }
