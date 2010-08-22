@@ -7,7 +7,7 @@ to be significantly faster than GSON, which seems to be the most
 popular non-streaming JSON parser available.
 
 THIS CODE IS DRAFT QUALITY AT BEST.  I've run tests with Twitter JSON
-formats, but the testing is by no eans thorough.  There are almost
+formats, but the testing is by no means thorough.  There are almost
 certainly dire bugs lurking.
 
 StreamyJ makes it easy to write idiomatic Scala parsers using Jackson by
