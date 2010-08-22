@@ -6,7 +6,10 @@ import scala.reflect.Manifest
 import org.codehaus.jackson.JsonProcessingException
 import org.objenesis.ObjenesisStd
 
-class JsonUnpackingException(reason: String) extends JsonProcessingException(reason)
+class JsonUnpackingException(reason: String) extends JsonProcessingException(reason) {
+  def this(name: String, cls: Class[_], other: String) =
+    this("Missing field conversion: " + name + " of type " + cls + " missing conversion from " + other)
+}
 
 class StreamyUnpacker {
   val objenesis = new ObjenesisStd()
@@ -15,12 +18,16 @@ class StreamyUnpacker {
   def coerce[A, B](name: String, obj: A, cls: Class[B])(implicit manifest: Manifest[A]): B = {
     if (manifest.erasure == classOf[Long]) {
       coerceLong(name, cls, obj.asInstanceOf[Long])
+    } else if (manifest.erasure == classOf[Double]) {
+      coerceDouble(name, cls, obj.asInstanceOf[Double])
+    } else if (manifest.erasure == classOf[String]) {
+      coerceString(name, cls, obj.asInstanceOf[String])
     } else {
       throw new JsonUnpackingException("foo")
     }
   }
 
-  def coerceLong[T](name: String, cls: Class[T], value: Long): T = {
+  private def coerceLong[T](name: String, cls: Class[T], value: Long): T = {
     (if (cls == classOf[Int]) {
       value.toInt
     } else if (cls == classOf[Long]) {
@@ -42,9 +49,61 @@ class StreamyUnpacker {
     } else if (cls == classOf[BigDecimal]) {
       BigDecimal(value)
     } else {
-      throw new JsonUnpackingException("Missing field conversion: " + name + " of type " +
-                                       cls + " missing conversion from long")
+      throw new JsonUnpackingException(name, cls, "long")
     }).asInstanceOf[T]
+  }
+
+  private def coerceDouble[T](name: String, cls: Class[T], value: Double): T = {
+    (if (cls == classOf[Int]) {
+      value.toInt
+    } else if (cls == classOf[Long]) {
+      value.toLong
+    } else if (cls == classOf[Short]) {
+      value.toShort
+    } else if (cls == classOf[Char]) {
+      value.toChar
+    } else if (cls == classOf[Byte]) {
+      value.toByte
+    } else if (cls == classOf[Float]) {
+      value.toFloat
+    } else if (cls == classOf[Double]) {
+      value
+    } else if (cls == classOf[String]) {
+      value.toString
+    } else if (cls == classOf[BigInt]) {
+      BigInt(value.toLong)
+    } else if (cls == classOf[BigDecimal]) {
+      BigDecimal(value)
+    } else {
+      throw new JsonUnpackingException(name, cls, "double")
+    }).asInstanceOf[T]
+  }
+
+  private def coerceString[T](name: String, cls: Class[T], value: String): T = {
+    val rv: Any = if (cls == classOf[Int]) {
+      value.toInt
+    } else if (cls == classOf[Long]) {
+      value.toLong
+    } else if (cls == classOf[Short]) {
+      value.toShort
+    } else if (cls == classOf[Char]) {
+      value.toInt.toChar
+    } else if (cls == classOf[Byte]) {
+      value.toByte
+    } else if (cls == classOf[Float]) {
+      value.toFloat
+    } else if (cls == classOf[Double]) {
+      value.toDouble
+    } else if (cls == classOf[String]) {
+      value
+    } else if (cls == classOf[BigInt]) {
+      BigInt(value)
+    } else if (cls == classOf[BigDecimal]) {
+      BigDecimal(value)
+    } else {
+      throw new JsonUnpackingException(name, cls, "string")
+    }
+    rv.asInstanceOf[T]
   }
 
   /*
@@ -57,61 +116,7 @@ class StreamyUnpacker {
   }
 */
 
-  def setDoubleField[T](obj: T, field: Field, value: Double) {
-    val t = field.getType
-    if (t == classOf[Int]) {
-      field.setInt(obj, value.toInt)
-    } else if (t == classOf[Long]) {
-      field.setLong(obj, value.toLong)
-    } else if (t == classOf[Short]) {
-      field.setShort(obj, value.toShort)
-    } else if (t == classOf[Char]) {
-      field.setChar(obj, value.toChar)
-    } else if (t == classOf[Byte]) {
-      field.setByte(obj, value.toByte)
-    } else if (t == classOf[Float]) {
-      field.setFloat(obj, value.toFloat)
-    } else if (t == classOf[Double]) {
-      field.setDouble(obj, value)
-    } else if (t == classOf[String]) {
-      field.set(obj, value.toString)
-    } else if (t == classOf[BigInt]) {
-      field.set(obj, BigInt(value.toLong))
-    } else if (t == classOf[BigDecimal]) {
-      field.set(obj, BigDecimal(value))
-    } else {
-      throw new JsonUnpackingException("Missing field conversion: " + field.getName + " of type " +
-                                       field.getType.toString + " missing conversion from double")
-    }
-  }
 
-  def setStringField[T](obj: T, field: Field, value: String) {
-    val t = field.getType
-    if (t == classOf[Int]) {
-      field.setInt(obj, value.toInt)
-    } else if (t == classOf[Long]) {
-      field.setLong(obj, value.toLong)
-    } else if (t == classOf[Short]) {
-      field.setShort(obj, value.toShort)
-    } else if (t == classOf[Char]) {
-      field.setChar(obj, value.toInt.toChar)
-    } else if (t == classOf[Byte]) {
-      field.setByte(obj, value.toByte)
-    } else if (t == classOf[Float]) {
-      field.setFloat(obj, value.toFloat)
-    } else if (t == classOf[Double]) {
-      field.setDouble(obj, value.toDouble)
-    } else if (t == classOf[String]) {
-      field.set(obj, value)
-    } else if (t == classOf[BigInt]) {
-      field.set(obj, BigInt(value))
-    } else if (t == classOf[BigDecimal]) {
-      field.set(obj, BigDecimal(value))
-    } else {
-      throw new JsonUnpackingException("Missing field conversion: " + field.getName + " of type " +
-                                       field.getType.toString + " missing conversion from string")
-    }
-  }
 
   def setBooleanField[T](obj: T, field: Field, value: Boolean) {
     val t = field.getType
@@ -126,8 +131,8 @@ class StreamyUnpacker {
   def setField[T](obj: T, field: Field, streamy: Streamy) {
     streamy.next() match {
       case ValueLong(x) => field.set(obj, coerce(field.getName, x, field.getType))
-      case ValueDouble(x) => setDoubleField(obj, field, x)
-      case ValueString(x) => setStringField(obj, field, x)
+      case ValueDouble(x) => field.set(obj, coerce(field.getName, x, field.getType))
+      case ValueString(x) => field.set(obj, coerce(field.getName, x, field.getType))
       case ValueFalse => setBooleanField(obj, field, false)
       case ValueTrue => setBooleanField(obj, field, true)
 //      case StartArray => setArrayField(obj, field, getArray(streamy))
@@ -139,8 +144,6 @@ class StreamyUnpacker {
       case object EndArray extends StreamyToken
       case object StartObject extends StreamyToken
       case object EndObject extends StreamyToken
-      case object ValueFalse extends StreamyToken
-      case object ValueTrue extends StreamyToken
       case object ValueNull extends StreamyToken
 */
 
