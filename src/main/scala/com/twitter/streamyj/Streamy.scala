@@ -6,7 +6,7 @@ import org.codehaus.jackson.JsonToken._
 /**
  * The base case class for a JsonToken
  */
-case class StreamyToken()
+abstract sealed case class StreamyToken()
 /** maps to JsonToken.START_ARRAY */
 case object StartArray extends StreamyToken
 /** maps to JsonToken.END_ARRAY */
@@ -26,7 +26,7 @@ case object ValueTrue extends StreamyToken
 /** maps to JsonToken.VALUE_NULL */
 case object ValueNull extends StreamyToken
 /** A base class for long, double, and string fields */
-case class ValueScalar(value: Any) extends StreamyToken
+abstract case class ValueScalar(value: Any) extends StreamyToken
 /** maps to JsonToken.VALUE_NUMBER_INT */
 case class ValueLong(override val value: Long) extends ValueScalar(value)
 /** maps to JsonToken.VALUE_NUMBER_FLOAT */
@@ -270,5 +270,3 @@ class Streamy(s: String) {
     }
   }
 }
-
-  

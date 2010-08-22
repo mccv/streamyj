@@ -89,6 +89,7 @@ object StreamySpec extends Specification {
           s.next() match {
             case ValueFalse => bool = false
             case ValueTrue => bool = true
+            case _ => throw new IllegalArgumentException
           }
         }
       }
