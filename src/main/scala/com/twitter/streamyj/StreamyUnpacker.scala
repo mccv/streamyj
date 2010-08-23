@@ -8,12 +8,13 @@ import org.objenesis.ObjenesisStd
 
 class JsonUnpackingException(reason: String) extends JsonProcessingException(reason) {
   def this(name: String, cls: Class[_], other: String) =
-    this("Missing field conversion: " + name + " of type " + cls + " missing conversion from " + other)
+    this("Missing field conversion: " + name + " of type (" + cls + ") missing conversion from " + other)
 }
 
 class StreamyUnpacker {
   val objenesis = new ObjenesisStd()
   var ignoreExtraFields = false
+  var ignoreMissingFields = false
 
   def coerce[A, B](name: String, obj: A, cls: Class[B])(implicit manifest: Manifest[A]): B = {
     coerce(name, obj, manifest.erasure.asInstanceOf[Class[A]], cls)
@@ -150,14 +151,10 @@ class StreamyUnpacker {
       case ValueFalse => field.set(obj, coerce(field.getName, false, field.getType))
       case ValueTrue => field.set(obj, coerce(field.getName, true, field.getType))
       case StartArray => field.set(obj, coerce(field.getName, getArray(streamy), field.getType))
+      case StartObject => field.set(obj, unpackObject(streamy, field.getType))
+      case ValueNull => field.set(obj, null)
       case x =>
         throw new JsonUnpackingException("Unexpected token: " + x)
-
-/*
-      case object StartArray extends StreamyToken
-      case object StartObject extends StreamyToken
-      case object ValueNull extends StreamyToken
-*/
     }
   }
 
@@ -186,36 +183,27 @@ class StreamyUnpacker {
   @throws(classOf[JsonProcessingException])
   def unpackObject[T](streamy: Streamy, cls: Class[T]): T = {
     val (obj, fields) = makeObject(cls)
+    val seenFields = new mutable.ListBuffer[String]
 
     streamy.obj {
       case FieldName(name) =>
         fields.find { _.getName == name } match {
           case None =>
             if (!ignoreExtraFields) {
-              throw new JsonUnpackingException("Extra field in json object for " + cls + ": " + name)
+              throw new JsonUnpackingException("Extra field in json object for (" + cls + "): " + name)
             }
           case Some(field) =>
             setField(obj, field, streamy)
         }
+        seenFields += name
     }
 
-    /*
-    fields.foreach { field =>
-      json.get(field.getName) match {
-        case None =>
-          throw new JsonException("Missing field: " + field.getName)
-        case Some(value) =>
-          setField(obj, field, value)
+    if (! ignoreMissingFields) {
+      val missingFields = fields.map { _.getName } -- seenFields.toList
+      if (missingFields.size > 0) {
+        throw new JsonUnpackingException("Missing field(s) in json object for (" + cls + "): " + missingFields.mkString(", "))
       }
     }
-
-    if (!ignoreExtraFields) {
-      val extraFields = json.keys -- fields.map { _.getName }
-      if (extraFields.size > 0) {
-        throw new JsonException("Extra fields in json: " + extraFields.mkString(", "))
-      }
-    }
-    */
 
     obj
   }

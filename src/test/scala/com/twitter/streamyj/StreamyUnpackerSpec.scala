@@ -110,5 +110,12 @@ object StreamyUnpackerSpec extends Specification {
       case class ArrayFriends(name: String, friends: Array[String])
       StreamyUnpacker[ArrayFriends](data2).friends.toList mustEqual List("Rudolph", "Frosty")
     }
+
+    "nested objects" in {
+      val data = """{"name":"Santa","employment":{"company":"Santa's Workshop","years":109}}"""
+      case class Employment(company: String, years: Int)
+      case class Employee(name: String, employment: Employment)
+      StreamyUnpacker[Employee](data) mustEqual Employee("Santa", Employment("Santa's Workshop", 109))
+    }
   }
 }
