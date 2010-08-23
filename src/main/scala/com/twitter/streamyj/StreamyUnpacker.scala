@@ -31,6 +31,8 @@ class StreamyUnpacker {
       coerceBoolean(name, cls, obj.asInstanceOf[Boolean])
     } else if (objcls == classOf[List[AnyRef]] || objcls == classOf[::[AnyRef]]) {
       coerceList(name, cls, obj.asInstanceOf[List[AnyRef]])
+    } else if (cls isAssignableFrom objcls) {
+      obj.asInstanceOf[B]
     } else {
       throw new JsonUnpackingException("Don't know how to coerce " + objcls)
     }
@@ -174,10 +176,14 @@ class StreamyUnpacker {
       case ValueNull => list += null
       case StartArray =>
         if (!cls.isArray) {
-          throw new JsonUnpackingException("Can't unpack nested lists due to type erasure")
+          throw new JsonUnpackingException("Can't unpack nested lists due to type erasure (try arrays)")
         }
         list += getArray(streamy, cls.getComponentType)
-//      case object StartObject extends StreamyToken
+      case StartObject =>
+        if (!cls.isArray) {
+          throw new JsonUnpackingException("Can't unpack lists of objects due to type erasure (try arrays)")
+        }
+        list += unpackObject(streamy, cls.getComponentType)
       case x =>
         throw new JsonUnpackingException("Unexpected token: " + x)
     }

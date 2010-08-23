@@ -129,5 +129,18 @@ object StreamyUnpackerSpec extends Specification {
       case class ListStar(name: String, position: List[List[Int]])
       StreamyUnpacker[ListStar](data) must throwA[Exception]
     }
+
+    "array of objects" in {
+      val data = """{"name":"Santa","roster":[{"name":"Robey","good":true},{"name":"Rus","good":true}]}"""
+
+      case class Recipient(name: String, good: Boolean)
+      case class ArrayGifter(name: String, roster: Array[Recipient])
+      val arraySanta = StreamyUnpacker[ArrayGifter](data)
+      arraySanta.name mustEqual "Santa"
+      arraySanta.roster.toList mustEqual List(Recipient("Robey", true), Recipient("Rus", true))
+
+      case class ListGifter(name: String, roster: List[Recipient])
+      StreamyUnpacker[ListGifter](data) must throwA[Exception]
+    }
   }
 }
