@@ -29,10 +29,10 @@ class StreamyUnpacker {
       coerceString(name, cls, obj.asInstanceOf[String])
     } else if (objcls == classOf[Boolean]) {
       coerceBoolean(name, cls, obj.asInstanceOf[Boolean])
-    } else if (objcls == classOf[List[AnyRef]]) {
+    } else if (objcls == classOf[List[AnyRef]] || objcls == classOf[::[AnyRef]]) {
       coerceList(name, cls, obj.asInstanceOf[List[AnyRef]])
     } else {
-      throw new JsonUnpackingException("foo: " + objcls)
+      throw new JsonUnpackingException("Don't know how to coerce " + objcls)
     }
   }
 
@@ -150,7 +150,7 @@ class StreamyUnpacker {
       case ValueString(x) => field.set(obj, coerce(field.getName, x, field.getType))
       case ValueFalse => field.set(obj, coerce(field.getName, false, field.getType))
       case ValueTrue => field.set(obj, coerce(field.getName, true, field.getType))
-      case StartArray => field.set(obj, coerce(field.getName, getArray(streamy), field.getType))
+      case StartArray => field.set(obj, coerce(field.getName, getArray(streamy, field.getType), field.getType))
       case StartObject => field.set(obj, unpackObject(streamy, field.getType))
       case ValueNull => field.set(obj, null)
       case x =>
@@ -158,12 +158,12 @@ class StreamyUnpacker {
     }
   }
 
-  def getArray(streamy: Streamy) = {
+  def getArray(streamy: Streamy, cls: Class[_]) = {
     val list = new mutable.ListBuffer[Any]
-    getArrayNext(streamy, list).toList
+    getArrayNext(streamy, list, cls).toList
   }
 
-  def getArrayNext(streamy: Streamy, list: mutable.ListBuffer[Any]): mutable.ListBuffer[Any] = {
+  def getArrayNext(streamy: Streamy, list: mutable.ListBuffer[Any], cls: Class[_]): mutable.ListBuffer[Any] = {
     streamy.next() match {
       case EndArray => return list
       case ValueLong(x) => list += x
@@ -172,12 +172,16 @@ class StreamyUnpacker {
       case ValueFalse => list += false
       case ValueTrue => list += true
       case ValueNull => list += null
-      case StartArray => list += getArray(streamy)
+      case StartArray =>
+        if (!cls.isArray) {
+          throw new JsonUnpackingException("Can't unpack nested lists due to type erasure")
+        }
+        list += getArray(streamy, cls.getComponentType)
 //      case object StartObject extends StreamyToken
       case x =>
         throw new JsonUnpackingException("Unexpected token: " + x)
     }
-    getArrayNext(streamy, list)
+    getArrayNext(streamy, list, cls)
   }
 
   @throws(classOf[JsonProcessingException])

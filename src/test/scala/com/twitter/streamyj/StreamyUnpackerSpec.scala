@@ -117,5 +117,17 @@ object StreamyUnpackerSpec extends Specification {
       case class Employee(name: String, employment: Employment)
       StreamyUnpacker[Employee](data) mustEqual Employee("Santa", Employment("Santa's Workshop", 109))
     }
+
+    "netsted arrays" in {
+      val data = """{"name":"Vega","position":[[14,20],[15,34]]}"""
+
+      case class ArrayStar(name: String, position: Array[Array[Int]])
+      val star = StreamyUnpacker[ArrayStar](data)
+      star.name mustEqual "Vega"
+      star.position.map { _.toList }.toList mustEqual List(List(14, 20), List(15, 34))
+
+      case class ListStar(name: String, position: List[List[Int]])
+      StreamyUnpacker[ListStar](data) must throwA[Exception]
+    }
   }
 }
