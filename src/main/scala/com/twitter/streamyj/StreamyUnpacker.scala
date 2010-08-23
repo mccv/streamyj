@@ -16,11 +16,11 @@ class StreamyUnpacker {
   var ignoreExtraFields = false
   var ignoreMissingFields = false
 
-  def coerce[A, B](name: String, obj: A, cls: Class[B])(implicit manifest: Manifest[A]): B = {
+  private def coerce[A, B](name: String, obj: A, cls: Class[B])(implicit manifest: Manifest[A]): B = {
     coerce(name, obj, manifest.erasure.asInstanceOf[Class[A]], cls)
   }
 
-  def coerce[A, B](name: String, obj: A, objcls: Class[A], cls: Class[B]): B = {
+  private def coerce[A, B](name: String, obj: A, objcls: Class[A], cls: Class[B]): B = {
     if (objcls == classOf[Long] || objcls == classOf[java.lang.Long]) {
       coerceLong(name, cls, obj.asInstanceOf[Long])
     } else if (objcls == classOf[Double]) {
@@ -145,7 +145,7 @@ class StreamyUnpacker {
     rv.asInstanceOf[T]
   }
 
-  def setField[T](obj: T, field: Field, streamy: Streamy) {
+  private def setField[T](obj: T, field: Field, streamy: Streamy) {
     streamy.next() match {
       case ValueLong(x) => field.set(obj, coerce(field.getName, x, field.getType))
       case ValueDouble(x) => field.set(obj, coerce(field.getName, x, field.getType))
@@ -160,12 +160,12 @@ class StreamyUnpacker {
     }
   }
 
-  def getArray(streamy: Streamy, cls: Class[_]) = {
+  private def getArray(streamy: Streamy, cls: Class[_]) = {
     val list = new mutable.ListBuffer[Any]
     getArrayNext(streamy, list, cls).toList
   }
 
-  def getArrayNext(streamy: Streamy, list: mutable.ListBuffer[Any], cls: Class[_]): mutable.ListBuffer[Any] = {
+  private def getArrayNext(streamy: Streamy, list: mutable.ListBuffer[Any], cls: Class[_]): mutable.ListBuffer[Any] = {
     streamy.next() match {
       case EndArray => return list
       case ValueLong(x) => list += x
@@ -223,7 +223,7 @@ class StreamyUnpacker {
    * the declared fields and make them accessible. This opens up a case class
    * for naughtiness.
    */
-  def makeObject[T](cls: Class[T]): (T, List[Field]) = {
+  private def makeObject[T](cls: Class[T]): (T, List[Field]) = {
     val obj = objenesis.newInstance(cls).asInstanceOf[T]
     val fields = cls.getDeclaredFields().filter { field => !(field.getName contains '$') }.toList
     fields.foreach { _.setAccessible(true) }
