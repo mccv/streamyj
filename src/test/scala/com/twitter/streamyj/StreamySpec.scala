@@ -5,325 +5,230 @@ import org.codehaus.jackson._
 import org.specs._
 import scala.collection.mutable.ListBuffer
 
-case class Geo(latitude: Double, longitude: Double)
-case class Place(x1: Double, y1: Double, x2: Double, y2: Double)
-
-case class AnnotationAttribute(name: String, value: String) {
-  val trackKeys = buildTrackKeys()
-
-  def buildTrackKeys() = {
-    val s = new HashSet[String]()
-    s.add("*=*")
-    s.add(name + "=*")
-    s.add("*=" + value)
-    s.add(name + "=" + value)
-    s
-  }
-}
-
-case class Annotation(typeName: String, attributes: Seq[AnnotationAttribute]) {
-  val trackKeys = buildTrackKeys()
-
-  def buildTrackKeys() = {
-    val s = new HashSet[String]()
-    attributes.foreach {attr =>
-      val i = attr.trackKeys.iterator
-      while (i.hasNext()) {
-        val attrKey = i.next()
-        s.add("*:" + attrKey)
-        s.add(typeName + ":" + attrKey)
-      }
-    }
-    s
-  }
-}
-
 object StreamySpec extends Specification {
-  var kind = -1
-
-  var userIdOpt:Option[Long] = None
-  var retweetUserIdOpt:Option[Long] = None
-  var statusIdOpt:Option[Long] = None
-  var limitTrackOpt:Option[Long] = None
-  var geoOpt:Option[Geo] = None
-  var placeOpt:Option[Place] = None
-  var sourceOpt:Option[String] = None
-  var inReplyToUserIdOpt:Option[Long] = None
-  var idOpt:Option[Long] = None
-  var retweetIdOpt:Option[Long] = None
-  var createdAtOpt:Option[String] = None
-  var textOpt:Option[String] = None
-  var annotationsOpt:Option[Seq[Annotation]] = None
-
-  val annotatedJSON = """{"geo":null,"in_reply_to_user_id":null,"favorited":false,"annotations":[{"amazon":{"price":"$49.99","id":"4"}},{"book":{"author":"Dickens","title":"Some Dickens Thing"}}],"text":"an annotated tweet","created_at":"Sat Apr 24 00:00:00 +0000 2010","truncated":false,"coordinates":null,"in_reply_to_screen_name":null,"contributors":null,"user":{"geo_enabled":false,"profile_background_tile":false,"profile_background_color":"9ae4e8","notifications":false,"lang":"en","following":false,"profile_text_color":"000000","utc_offset":-28800,"created_at":"Sat Apr 24 00:00:00 +0000 2010","followers_count":2,"url":null,"statuses_count":1,"profile_link_color":"0000ff","profile_image_url":"http://s3.amazonaws.com/twitter_development/profile_images/2/jack_normal.jpg","friends_count":2,"contributors_enabled":false,"time_zone":"Pacific Time (US & Canada)","profile_sidebar_fill_color":"e0ff92","protected":true,"description":"love, love","screen_name":"jack","favourites_count":0,"name":"Jack","profile_sidebar_border_color":"87bc44","id":3,"verified":false,"profile_background_image_url":"/images/themes/theme1/bg.png","location":"San Francisco"},"place":null,"in_reply_to_status_id":null,"source":"web","id":1234}"""
-  val unAnnotatedJSON = """{"geo":null,"in_reply_to_user_id":null,"favorited":false,"text":"an annotated tweet","created_at":"Sat Apr 24 00:00:00 +0000 2010","truncated":false,"coordinates":null,"in_reply_to_screen_name":null,"contributors":null,"user":{"geo_enabled":false,"profile_background_tile":false,"profile_background_color":"9ae4e8","notifications":false,"lang":"en","following":false,"profile_text_color":"000000","utc_offset":-28800,"created_at":"Sat Apr 24 00:00:00 +0000 2010","followers_count":2,"url":null,"statuses_count":1,"profile_link_color":"0000ff","profile_image_url":"http://s3.amazonaws.com/twitter_development/profile_images/2/jack_normal.jpg","friends_count":2,"contributors_enabled":false,"time_zone":"Pacific Time (US & Canada)","profile_sidebar_fill_color":"e0ff92","protected":true,"description":"love, love","screen_name":"jack","favourites_count":0,"name":"Jack","profile_sidebar_border_color":"87bc44","id":3,"verified":false,"profile_background_image_url":"/images/themes/theme1/bg.png","location":"San Francisco"},"place":null,"in_reply_to_status_id":null,"source":"web","id":1234}"""
-  val blankAnnotatedJSON = """{"geo":null,"in_reply_to_user_id":null,"favorited":false,"annotations":[],"text":"an annotated tweet","created_at":"Sat Apr 24 00:00:00 +0000 2010","truncated":false,"coordinates":null,"in_reply_to_screen_name":null,"contributors":null,"user":{"geo_enabled":false,"profile_background_tile":false,"profile_background_color":"9ae4e8","notifications":false,"lang":"en","following":false,"profile_text_color":"000000","utc_offset":-28800,"created_at":"Sat Apr 24 00:00:00 +0000 2010","Followers_count":2,"url":null,"statuses_count":1,"profile_link_color":"0000ff","profile_image_url":"http://s3.amazonaws.com/twitter_development/profile_images/2/jack_normal.jpg","friends_count":2,"contributors_enabled":false,"time_zone":"Pacific Time (US & Canada)","profile_sidebar_fill_color":"e0ff92","protected":true,"description":"love, love","screen_name":"jack","favourites_count":0,"name":"Jack","profile_sidebar_border_color":"87bc44","id":3,"verified":false,"profile_background_image_url":"/images/themes/theme1/bg.png","location":"San Francisco"},"place":null,"in_reply_to_status_id":null,"source":"web","id":1234}"""
-
   "Streamy" should {
-    "work" in {
-      val s = new Streamy("""{"id":1, "bar":{"id":3, "bar":2}, "arr":[1,2,3], "text":"some text", "bool":true}""")
-      s.next()
-
-      var id1 = -1L
-      var id3 = -1L
-      var arr = List[Long]()
-      var text = ""
-      var bool = false
-
-      val submatch:Streamy.ParseFunc = {
-        case FieldName("id") => id3 = s.readLongField()
-      }
-
-      s.obj {
-        case FieldName("id") => id1 = s.readLongField()
-        case FieldName("text") => text = s.readStringField()
-        case StartArray => {
-          s.arr {
-            case ValueLong(l) => arr = l :: arr
-          }
-        }
-        case StartObject => {
-          s.obj(submatch)
-        }
-        case FieldName("bool") => {
-          s.next() match {
-            case ValueFalse => bool = false
-            case ValueTrue => bool = true
-            case _ => throw new IllegalArgumentException
-          }
-        }
-      }
-      id1 must be_==(1)
-      id3 must be_==(3)
-      arr must be_==(List(3L,2L,1L))
-      text must be_==("some text")
-      bool must be_==(true)
+    "handle scalar values" in {
+      val s = Streamy("true false 123456789 3.1415927 \"hello world\"")
+      s.readBoolean() must beTrue
+      s.readBoolean() must beFalse
+      s.readLong() mustEqual 123456789L
+      s.readDouble() mustEqual 3.1415927
+      s.readString() mustEqual "hello world"
     }
 
-    "work with no parsing logic" in {
-      val s = new Streamy("""{"id":1, "text":"text", "bar":{"id":3, "bar":2}, "foo":2}""")
+    "handle optional scalars" in {
+      "null" in {
+        Streamy("null").readNullOption() must beSome(null)
+        Streamy("3").readNullOption() must beNone
+      }
+      "boolean" in {
+        Streamy("null").readBooleanOption() must beNone
+        Streamy("true").readBooleanOption() must beSome(true)
+      }
+      "long" in {
+        Streamy("null").readLongOption() must beNone
+        Streamy("42").readLongOption() must beSome(42L)
+      }
+      "double" in {
+        Streamy("null").readDoubleOption() must beNone
+        Streamy("3.14").readDoubleOption() must beSome(3.14)
+      }
+      "string" in {
+        Streamy("null").readStringOption() must beNone
+        Streamy("\"hello world\"").readStringOption() must beSome("hello world")
+      }
+    }
+
+    "handle empty arrays" in {
+      val s = Streamy("[] 42")
+      s.readArray(_ => fail())
+      s.readLong() mustEqual 42L
+    }
+
+    "handle simples arrays with readArray" in {
+      val s = Streamy("[true, 123456789, 3.1415927, \"hello world\"] 42")
+      var a0: Option[Boolean] = None
+      var a1: Option[Long] = None
+      var a2: Option[Double] = None
+      var a3: Option[String] = None
+
+      def verifyResults() {
+        s.readLong() mustEqual 42L
+        a0 must beSome(true)
+        a1 must beSome(123456789L)
+        a2 must beSome(3.1415927)
+        a3 must beSome("hello world")
+      }
+
+      val fn: Int => Unit = {
+        case 0 => a0 = Some(s.readBoolean())
+        case 1 => a1 = Some(s.readLong())
+        case 2 => a2 = Some(s.readDouble())
+        case 3 => a3 = Some(s.readString())
+      }
+
+      "with readArray" in {
+        s readArray fn
+        verifyResults()
+      }
+
+      "with arr" in {
+        s arr fn
+        verifyResults()
+      }
+
+      "with readArrayOption" in {
+        s readArrayOption fn must beTrue
+        verifyResults()
+      }
+
+      "with startArray/readArrayBody" in {
+        s.startArray
+        s readArrayBody fn
+        verifyResults()
+      }
+    }
+
+    "read arrays piecemeal" in {
+      val s = Streamy("[true, 123456789, 3.1415927, \"hello world\"] 42")
+      s.startArray()
+      s.readBoolean() must beTrue
+      s.readLong() mustEqual 123456789L
+      s.readDouble() mustEqual 3.1415927
+      s.readString() mustEqual "hello world"
+      s.skipToArrayEnd()
+      s.readLong() mustEqual 42L
+    }
+
+    "handle nested arrays" in {
+      val s = Streamy("[[[0, 1], [2, 3]]]")
+      val seen = new ListBuffer[Long]
+      def fn(index: Int) {
+        s.next() match {
+          case ValueLong(x) => seen += x
+          case StartArray => s.readArrayBody(fn)
+          case _ => throw new Exception
+        }
+      }
+      s.readArray(fn)
+      seen.toList mustEqual Range(0, 4).toList
+    }
+
+    "foldArray" in {
+      val s = Streamy("[2, 4, 6, 8]")
+      val res = s.foldArray(new ListBuffer[Int]) {
+        case (buf, i) => buf += s.readInt(); buf
+      }.toList
+      res mustEqual List(2, 4, 6, 8)
+    }
+
+    "handle simple object, ignore unmatched fields" in {
+      val s = Streamy("""{"id":1, "text":"text", "flag":true, "foo":3} 42""")
+      var id: Option[Long] = None
+      var text: Option[String] = None
+      var flag: Option[Boolean] = None
+
+      def verifyResults() {
+        s.readLong() mustEqual 42L
+        id must beSome(1)
+        text must beSome("text")
+        flag must beSome(true)
+      }
+
+      val fn: PartialFunction[String,Unit] = {
+        case "id" => id = Some(s.readLong())
+        case "text" => text = Some(s.readString())
+        case "flag" => flag = Some(s.readBoolean())
+      }
+
+      "with \\ " in {
+        s \ fn
+        verifyResults()
+      }
+
+      "with readObject" in {
+        s readObject fn
+        verifyResults()
+      }
+
+      "with readObjectOption" in {
+        s readObjectOption fn must beTrue
+        verifyResults()
+      }
+
+      "with startObject/readObjectBody" in {
+        s.startObject()
+        s readObjectBody fn
+        verifyResults()
+      }
+    }
+
+    "foldObject" in {
+      val s = Streamy("""{"id":1,"text":"hello"}""")
+      val map = s.foldObject(Map[String,Any]()) {
+        case (map, key) => map + (key -> s.readScalar())
+      }
+      map mustEqual Map("id" -> 1L, "text" -> "hello")
+    }
+
+    "can skip entire objects" in {
+      val s = Streamy("""{"id":1, "text":"text", "bar":{"id":3, "bar":2}, "foo":2} 42""")
       // just make sure this doesn't throw anything (e.g. stack overflow)
-      s.obj(s.eat)
-      true must be_==(true)
+      s.skipNext() must not(throwA[Exception])
+      s.readLong() mustEqual 42L
+    }
+
+    "can skip entire arrays" in {
+      val s = Streamy("""[42, true, {"id":1, "bar":{"id":3, "bar":2}}] 42""")
+      // just make sure this doesn't throw anything (e.g. stack overflow)
+      s.skipNext() must not(throwA[Exception])
+      s.readLong() mustEqual 42L
     }
 
     "handle null objects correctly" in {
-      val s = new Streamy("""{"id":1, "text":"text", "bar":null, "foo":2}""")
+      val s = Streamy("""{"id":1, "text":"text", "bar":null, "foo":2}""")
       // just make sure this doesn't throw anything (e.g. stack overflow)
       var foo = 0L
       s \ {
-        case FieldName("foo") => foo = s.readLongField()
+        case "foo" => foo = s.readLong()
       }
       foo must be_==(2)
     }
 
     "handle embedded objects and arrays" in {
-      val s = new Streamy("""{"id":1, "embed":{"foo":"bar", "baz":{"baz":1}, "arr":[[1],2,3,4]},"id2":2}""")
-      var id = 0L
-      var id2 = 0L
+      val s = Streamy("""{"id":1, "embed":{"foo":"bar", "baz":{"baz":1}, "arr":[[1],2,3,4]},"id2":2}""")
+      var id: Option[Long] = None
+      var foo: Option[String] = None
+      var baz: Option[Long] = None
+      var id2: Option[Long] = None
+      var arr: List[Any] = Nil
+      def readArray(): List[Any] = {
+        val buf = new ListBuffer[Any]
+        s.readArray { _ =>
+          s.peek() match {
+            case _: ValueScalar => buf += s.readScalar()
+            case StartArray => buf += readArray()
+            case _ => s.skipNext()
+          }
+        }
+        buf.toList
+      }
       s \ {
-        case FieldName("id") => id = s.readLongField()
-        case FieldName("id2") => id2 = s.readLongField()
-      }
-      id must be_==(1)
-      id2 must be_==(2)
-    }
-
-    "work on a tweet" in {
-      val s = new Streamy(unAnnotatedJSON)
-
-      s.obj {
-        case FieldName("delete") => {
-          kind = 1 // delete
-          readDelete(s)
-        }
-        case FieldName("scrub_geo") => {
-          kind = 2 // scrub geo
-          readScrubGeo(s)
-        }
-        case FieldName("limit") => {
-          kind = 3 // limit
-          readLimit(s)
-        }
-        case FieldName("geo") => readGeo(s)
-        case FieldName("place") => readPlace(s)
-        case FieldName("retweeted_status") => readRetweet(s)
-        case FieldName("user") => {
-          readUser(s, false)
-        }
-        case FieldName("annotations") => readAnnotations(s)
-        case FieldName("entities") => readEntities(s)
-        case FieldName("id") => idOpt = Some(s.readLongField())
-        case FieldName("source") => sourceOpt = Some(s.readStringField())
-        case FieldName("created_at") => createdAtOpt = Some(s.readStringField())
-        case FieldName("text") => textOpt = Some(s.readStringField())
-        case FieldName("in_reply_to_user_id") => {
-          val token = s.next()
-          if (token != ValueNull) {
-            inReplyToUserIdOpt = Some(s.readLongField())
+        case "id" => id = Some(s.readLong())
+        case "id2" => id2 = Some(s.readLong())
+        case "embed" => s \ {
+          case "foo" => foo = Some(s.readString())
+          case "baz" => s \ {
+            case "baz" => baz = Some(s.readLong())
           }
+          case "arr" => arr = readArray()
         }
       }
-      userIdOpt must be_==(Some(3))                   
-    }
-    "work on a blank annotated tweet" in {
-      val s = new Streamy(blankAnnotatedJSON)
-
-      s.obj {
-        case FieldName("delete") => {
-          kind = 1 // delete
-          readDelete(s)
-        }
-        case FieldName("scrub_geo") => {
-          kind = 2 // scrub geo
-          readScrubGeo(s)
-        }
-        case FieldName("limit") => {
-          kind = 3 // limit
-          readLimit(s)
-        }
-        case FieldName("geo") => readGeo(s)
-        case FieldName("place") => readPlace(s)
-        case FieldName("retweeted_status") => readRetweet(s)
-        case FieldName("user") => {
-          readUser(s, false)
-        }
-        case FieldName("annotations") => readAnnotations(s)
-        case FieldName("entities") => readEntities(s)
-        case FieldName("id") => idOpt = Some(s.readLongField())
-        case FieldName("source") => sourceOpt = Some(s.readStringField())
-        case FieldName("created_at") => createdAtOpt = Some(s.readStringField())
-        case FieldName("text") => textOpt = Some(s.readStringField())
-        case FieldName("in_reply_to_user_id") => {
-          val token = s.next()
-          if (token != ValueNull) {
-            inReplyToUserIdOpt = Some(s.readLongField())
-          }
-        }
-      }
-      userIdOpt must be_==(Some(3))                   
+      id must beSome(1L)
+      id2 must beSome(2L)
+      foo must beSome("bar")
+      baz must beSome(1L)
+      arr mustEqual List(List(1L), 2L, 3L, 4L)
     }
   }
-
-  def readDelete(s: Streamy) = {
-    s \ {
-      case FieldName("status") => {
-        s \ {
-          case FieldName("user_id") => userIdOpt = Some(s.readLongField())
-          case FieldName("id") => idOpt = Some(s.readLongField())
-        }
-      }
-    }
-  }
-  
-  def readLimit(s: Streamy) = {
-    s \ {
-      case FieldName("track") => limitTrackOpt = Some(s.readLongField())
-    }
-  }
-  
-  def readScrubGeo(s: Streamy) = {
-    s \ {
-      case FieldName("user_id") => userIdOpt = Some(s.readLongField())
-      case FieldName("up_to_status_id") => idOpt = Some(s.readLongField())
-    }
-  }
-
-  def readRetweet(s: Streamy) = {
-    s \ {
-      case FieldName("user") => readUser(s, true)
-      case FieldName("id") => retweetIdOpt = Some(s.readLongField())
-    }
-  }
-
-  def readUser(s: Streamy, isRetweet: Boolean) = {
-    s \ {
-      case FieldName("id") => {
-        if (isRetweet) {
-          retweetUserIdOpt = Some(s.readLongField())
-        } else {
-          userIdOpt = Some(s.readLongField())
-        }
-      }
-    }
-  }
-
-  def readGeo(s: Streamy) = {
-    s \ {
-      case FieldName("coordinates") => {
-        try {
-          s arr {
-            case ValueDouble(d) => {
-              val latitude = s.readDoubleField()
-              s.next()
-              val longitude = s.readDoubleField()
-              geoOpt = Some(Geo(latitude, longitude))
-            }
-          }
-        } catch {
-          case e: NumberFormatException => throw new IllegalArgumentException()
-        }
-      }
-    }
-  }
-
-  def readPlace(s: Streamy) = {
-    s \ {
-      case FieldName("bounding_box") => {
-        s \ {
-          case FieldName("coordinates") => {
-            var minX = Math.MAX_DOUBLE
-            var minY = Math.MAX_DOUBLE
-            var maxX = Math.MIN_DOUBLE
-            var maxY = Math.MIN_DOUBLE
-            // two nested arrays
-            s arr {
-              case StartArray => s arr {
-                case ValueDouble(d) => {
-                  val x = s.readDoubleField()
-                  s.next()
-                  val y = s.readDoubleField()
-                  if (x < minX) minX = x
-                  if (y < minY) minY = y
-                  if (x > maxX) maxX = x
-                  if (y > maxY) maxY = y
-                }
-              }
-            }
-            placeOpt = Some(Place(minX, minY, maxX, maxY))
-          }
-        }
-      }
-    }
-  }
-
-  def readAnnotations(s: Streamy) = {
-    var parsedAnnotations = new ListBuffer[Annotation]()
-    s arr {
-      case StartObject => {
-        s \ {
-          case FieldName(typeName) => {
-            var attributes = new ListBuffer[AnnotationAttribute]()
-            s \ {
-              case FieldName(attrName) => {
-                attributes += AnnotationAttribute(attrName, s.readStringField())
-              }
-            }
-            parsedAnnotations += Annotation(typeName, attributes)
-          }
-        }
-      }
-      annotationsOpt = Some(parsedAnnotations)
-    }
-  }
-
-  def readEntities(s: Streamy) = {
-    s \ {
-      case FieldName("urls") => {
-      }
-      case FieldName("hashtags") => {
-      }
-    }
-  }
-  
 }

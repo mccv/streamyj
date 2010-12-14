@@ -150,10 +150,9 @@ class StreamyUnpacker {
       case ValueLong(x) => field.set(obj, coerce(field.getName, x, field.getType))
       case ValueDouble(x) => field.set(obj, coerce(field.getName, x, field.getType))
       case ValueString(x) => field.set(obj, coerce(field.getName, x, field.getType))
-      case ValueFalse => field.set(obj, coerce(field.getName, false, field.getType))
-      case ValueTrue => field.set(obj, coerce(field.getName, true, field.getType))
+      case ValueBoolean(x) => field.set(obj, coerce(field.getName, x, field.getType))
       case StartArray => field.set(obj, coerce(field.getName, getArray(streamy, field.getType), field.getType))
-      case StartObject => field.set(obj, unpackObject(streamy, field.getType))
+      case StartObject => field.set(obj, unpackObject(streamy, field.getType, true))
       case ValueNull => field.set(obj, null)
       case x =>
         throw new JsonUnpackingException("Unexpected token: " + x)
@@ -171,8 +170,7 @@ class StreamyUnpacker {
       case ValueLong(x) => list += x
       case ValueDouble(x) => list += x
       case ValueString(x) => list += x
-      case ValueFalse => list += false
-      case ValueTrue => list += true
+      case ValueBoolean(x) => list += x
       case ValueNull => list += null
       case StartArray =>
         if (!cls.isArray) {
@@ -183,7 +181,7 @@ class StreamyUnpacker {
         if (!cls.isArray) {
           throw new JsonUnpackingException("Can't unpack lists of objects due to type erasure (try arrays)")
         }
-        list += unpackObject(streamy, cls.getComponentType)
+        list += unpackObject(streamy, cls.getComponentType, true)
       case x =>
         throw new JsonUnpackingException("Unexpected token: " + x)
     }
@@ -191,12 +189,17 @@ class StreamyUnpacker {
   }
 
   @throws(classOf[JsonProcessingException])
-  def unpackObject[T](streamy: Streamy, cls: Class[T]): T = {
+  def unpackObject[T](streamy: Streamy, cls: Class[T]): T = unpackObject(streamy, cls, false)
+
+  @throws(classOf[JsonProcessingException])
+  def unpackObject[T](streamy: Streamy, cls: Class[T], inObject: Boolean): T = {
     val (obj, fields) = makeObject(cls)
     val seenFields = new mutable.ListBuffer[String]
 
-    streamy.obj {
-      case FieldName(name) =>
+    if (!inObject) streamy.startObject()
+
+    streamy.readObjectBody {
+      case name =>
         fields.find { _.getName == name } match {
           case None =>
             if (!ignoreExtraFields) {
@@ -232,6 +235,7 @@ class StreamyUnpacker {
 }
 
 object StreamyUnpacker {
-  def apply[T](s: String)(implicit manifest: Manifest[T]): T =
-    new StreamyUnpacker().unpackObject(new Streamy(s), manifest.erasure.asInstanceOf[Class[T]])
+  def apply[T](s: String)(implicit manifest: Manifest[T]): T = {
+    new StreamyUnpacker().unpackObject(Streamy(s), manifest.erasure.asInstanceOf[Class[T]])
+  }
 }

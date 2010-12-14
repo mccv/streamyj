@@ -1,54 +1,27 @@
 package com.twitter.streamyj
 
+import java.io.{File, Reader, StringWriter}
 import org.codehaus.jackson._
 import org.codehaus.jackson.JsonToken._
-
-/**
- * The base case class for a JsonToken
- */
-abstract sealed case class StreamyToken()
-/** maps to JsonToken.START_ARRAY */
-case object StartArray extends StreamyToken
-/** maps to JsonToken.END_ARRAY */
-case object EndArray extends StreamyToken
-/** maps to JsonToken.START_OBJECT */
-case object StartObject extends StreamyToken
-/** maps to JsonToken.END_OBJECT */
-case object EndObject extends StreamyToken
-/** maps to JsonToken.FIELD_NAME */
-case class FieldName(name: String) extends StreamyToken
-/** maps to JsonToken.NOT_AVAILABLE */
-case object NotAvailable extends StreamyToken
-/** maps to JsonToken.VALUE_FALSE */
-case object ValueFalse extends StreamyToken
-/** maps to JsonToken.VALUE_TRUE */
-case object ValueTrue extends StreamyToken
-/** maps to JsonToken.VALUE_NULL */
-case object ValueNull extends StreamyToken
-/** A base class for long, double, and string fields */
-abstract case class ValueScalar(value: Any) extends StreamyToken
-/** maps to JsonToken.VALUE_NUMBER_INT */
-case class ValueLong(override val value: Long) extends ValueScalar(value)
-/** maps to JsonToken.VALUE_NUMBER_FLOAT */
-case class ValueDouble(override val value: Double) extends ValueScalar(value)
-/** maps to JsonToken.VALUE_STRING */
-case class ValueString(override val value: String) extends ValueScalar(value)
-
+import scala.annotation.tailrec
 
 /**
  * Just store the PartialFunction type for parse functions so
  * it can be referenced by user implementations (easily)
  */
 object Streamy {
-  /**
-   * This is the partial function parse methods need
-   */
-  type ParseFunc = PartialFunction[StreamyToken, Unit]
+  type ObjectParseFunc = PartialFunction[String, Unit]
+  type ArrayParseFunc = Function[Int, Unit]
+
   /**
    * Jackson's Json parser factory
    */
   val factory = new JsonFactory()
-  def createParser(s: String) = factory.createJsonParser(s)
+
+  def apply(source: String): Streamy = apply(factory.createJsonParser(source))
+  def apply(reader: Reader): Streamy = apply(factory.createJsonParser(reader))
+  def apply(file: File): Streamy = apply(factory.createJsonParser(file))
+  def apply(parser: JsonParser): Streamy = new Streamy(parser)
 }
 
 /**
@@ -58,215 +31,449 @@ object Streamy {
  * Scala-idiomatic manner.  A quick example:
  *
  */
-class Streamy(s: String) {
+class Streamy(parser: JsonParser) {
+  import Streamy.ObjectParseFunc
+  import Streamy.ArrayParseFunc
+
+  private var currentToken: StreamyToken = NotAvailable
+  private var peekedToken: StreamyToken = NotAvailable
 
   /**
-   * Pull in Streamy.ParseFunc just for brevity
+   * Advances the parser and sets the current token.
+   * @throws JsonParseException if the are no more tokens
    */
-  type ParseFunc = Streamy.ParseFunc
-  /**
-   * the underlying json parser
-   */
-  val reader = Streamy.createParser(s)
-  /**
-   * Store the current token (it's useful while parsing)
-   */
-  var token:StreamyToken = null
-
-  /**
-   * A mapping of JsonToken constants to StreamyToken instances.
-   * This allows (more elegant) pattern matching parsers
-   */
-  def tokenToCaseClass(token: JsonToken) = token match {
-    case START_ARRAY => StartArray
-    case END_ARRAY => EndArray
-    case START_OBJECT => StartObject
-    case END_OBJECT => EndObject
-    case FIELD_NAME => FieldName(reader.getCurrentName)
-    case NOT_AVAILABLE => NotAvailable
-    case VALUE_FALSE => ValueFalse
-    case VALUE_TRUE => ValueTrue
-    case VALUE_NULL => ValueNull
-    case VALUE_NUMBER_FLOAT => ValueDouble(reader.getDoubleValue())
-    case VALUE_NUMBER_INT => ValueLong(reader.getLongValue())
-    case VALUE_STRING => ValueString(reader.getText())
-    case _ => NotAvailable
+  def next(): StreamyToken = {
+    peekedToken match {
+      case NotAvailable =>
+        currentToken = StreamToken(parser)
+      case token =>
+        currentToken = token
+        peekedToken = NotAvailable
+    }
+    currentToken
   }
 
   /**
-   * A parse function that "eats" objects or arrays
+   * Gets the current token, which is the last token returned by next()
    */
-  val eat:ParseFunc = {
-    case FieldName(s) => null; // noop
-    case ValueFalse => null; // noop
-    case ValueTrue => null; // noop
-    case ValueScalar(s) => null; //noop
-  }
-
+  def current = currentToken
 
   /**
-   * alias for startObject(fn)
+   * Looks at the next token without consuming it.
    */
-  def \(fn: ParseFunc) = {
-    startObject(fn)
+  def peek(): StreamyToken = {
+    peekedToken match {
+      case NotAvailable =>
+        peekedToken = StreamToken(parser)
+      case _ =>
+    }
+    peekedToken
+  }
+
+//  def read[T](fn: PartialFunction[Token,T]): Option[T] = {}
+
+  /**
+   * Gets the location of the current token
+   */
+  def location = parser.getCurrentLocation
+
+  /**
+   * alias for readObject(fn)
+   */
+  def \(fn: ObjectParseFunc) = readObject(fn)
+
+  /**
+   * An alias for readArray.
+   */
+  def arr(fn: ArrayParseFunc) = readArray(fn)
+
+  /**
+   * Matches the start of an object value, but without reading the object
+   * body, or throws an exception if the next token is not an StartObject.
+   */
+  def startObject() {
+    next() match {
+      case StartObject => // goo
+      case token => unexpected(token, "object")
+    }
   }
 
   /**
-   * alias for startObject(fn)
+   * Matches the start of an object value, but without reading the object
+   * body, or "null", or throws an exception if the next token is not an StartObject.
+   * @return true if starting an object, false if null
    */
-  def obj(fn: ParseFunc) = {
-    startObject(fn)
+  def startObjectOption(): Boolean = {
+    next() match {
+      case ValueNull => false
+      case StartObject => true
+      case token => unexpected(token, "object")
+    }
   }
 
   /**
-   * An alias for startArray.
-   * Applies the supplied function to the current
-   * JSON array.  Note that the current token should
-   * be the start of the array (either an opening bracket or null)
+   * Reads an object from open-curly to close-curly. Any field name not
+   * recognized by the given PartialFunction will be skipped.  
+   * If the PartialFunction matches a field name, it MUST either fully
+   * read the corresponding value or skip it.  Not doing so will leave
+   * the parser in an unpredictable state.
    */
-  def arr(fn: ParseFunc) = {
-    startArray(fn)
+  def readObject(fn: ObjectParseFunc) {
+    startObject()
+    readObjectBody(fn)
   }
 
   /**
-   * Advances the parser and sets the current token
+   * Reads an object from open-curly to close-curly. Any field name not
+   * recognized by the given PartialFunction will be skipped.
+   * If the PartialFunction matches a field name, it MUST either fully
+   * read the corresponding value or skip it.  Not doing so will leave
+   * the parser in an unpredictable state.
    */
-  def next():StreamyToken = {
-    token = tokenToCaseClass(reader.nextToken())
-    token
+  def readObjectOption(fn: ObjectParseFunc): Boolean = {
+    startObjectOption() && { readObjectBody(fn); true }
+  }
+
+  /**
+   * Reads the body of the object, up to the close-curly.  Any field name not
+   * recognized by the given PartialFunction will be skipped.
+   * The result of calling this is undefined if not already in an object.
+   * If the PartialFunction matches a field name, it MUST either fully
+   * read the corresponding value or skip it.  Not doing so will leave
+   * the parser in an unpredictable state.
+   */
+  def readObjectBody(fn: ObjectParseFunc) {
+    @tailrec def loop() {
+      next() match {
+        case EndObject => // done
+        case FieldName(name) =>
+          if (fn.isDefinedAt(name)) fn(name) else skipNext()
+          loop()
+        case token => unexpected(token, "field name")
+      }
+    }
+    loop()
+  }
+
+  /**
+   * Reads an object using an accumulator.
+   * If the PartialFunction matches a field name, it MUST either fully
+   * read the corresponding value or skip it.  Not doing so will leave
+   * the parser in an unpredictable state.
+   */
+  def foldObject[T](start: T)(fn: PartialFunction[(T,String), T]): T = {
+    startObject()
+    foldObjectBody(start)(fn)
+  }
+
+  /**
+   * Reads an object using an accumulator.
+   * If the PartialFunction matches a field name, it MUST either fully
+   * read the corresponding value or skip it.  Not doing so will leave
+   * the parser in an unpredictable state.
+   */
+  def foldObjectBody[T](start: T)(fn: PartialFunction[(T,String), T]): T = {
+    @tailrec def loop(accum: T): T = {
+      next() match {
+        case EndObject => accum
+        case FieldName(name) =>
+          val tup = (accum, name)
+          if (fn.isDefinedAt(tup))
+            loop(fn(tup))
+          else {
+            skipNext()
+            loop(accum)
+          }
+        case token => unexpected(token, "field name")
+      }
+    }
+    loop(start)
+  }
+
+  /**
+   * Matches the start of an array value, but without reading the array
+   * members, or throws an exception if the next token is not a StartArray.
+   */
+  def startArray() {
+    next() match {
+      case StartArray => // good
+      case token => unexpected(token, "array")
+    }
+  }
+
+  /**
+   * Matches the start of an array value, but without reading the array
+   * members, or "null", or throws an exception if the next token is not a StartArray.
+   * @return true if starting an array, false if null.
+   */
+  def startArrayOption(): Boolean = {
+    next() match {
+      case ValueNull => false
+      case StartArray => true
+      case token => unexpected(token, "array")
+    }
   }
 
   /**
    * applies the supplied function to the current
-   * JSON object.  Note that the current token should
-   * be the start of the object (either a curly brace or null).
-   * After the first token is read this passes control to
-   * readObject.
+   * JSON array.  Note that the current token should
+   * be the start of the array (either an opening bracket or null)
+   * The given function MUST either fully read the corresponding value 
+   * or skip it.  Not doing so will leave the parser in an unpredictable state.
    */
-  def startObject(fn: ParseFunc):Unit = {
-    next() match {
-      case token if fn.isDefinedAt(token) => {
-        fn(token)
-      }
-      case ValueNull => return
-      case EndObject => return
-      case _ => //noop
-    }
-    readObject(fn)
-  }
-
-  /**
-   * Continues reading an object until it is closed.
-   * If the passed in function is defined at the current token
-   * it is called.  Otherwise the following actions are taken
-   * <ul>
-   * <li>NotAvailable: return. The JSON stream has ended.  Shouldn't happen</li>
-   * <li>EndObject: return. The JSON object has ended.</li>
-   * <li>StartObject: call readObject with the eat() handler.  Just consumes
-   * tokens from the embedded object</li>
-   * <li>StartArray: call readArray with the eat() handler.  Just consumes
-   * tokens from the embedded array</li>
-   * <li>Anything else: noop</li>
-   */
-  def readObject(fn: ParseFunc):Unit = {
-    next() match {
-      case token if fn.isDefinedAt(token) => {
-        fn(token)
-      }
-      case NotAvailable => return
-      case EndObject => return
-      case StartArray => startArray(eat)
-      case StartObject => startObject(eat)
-      case _ => //noop
-    }
-    readObject(fn)
+  def readArray(fn: ArrayParseFunc) {
+    startArray()
+    readArrayBody(fn)
   }
 
   /**
    * applies the supplied function to the current
    * JSON array.  Note that the current token should
    * be the start of the array (either an opening bracket or null)
+   * The given function MUST either fully read the corresponding value 
+   * or skip it.  Not doing so will leave the parser in an unpredictable state.
    */
-  def startArray(fn: ParseFunc):Unit = {
-    next() match {
-      case token if fn.isDefinedAt(token) => {
-        fn(token)
-      }
-      case ValueNull => return
-      case EndArray => return
-      case _ => //noop
-    }
-    readArray(fn)
+  def readArrayOption(fn: ArrayParseFunc): Boolean = {
+    startArrayOption() && { readArrayBody(fn); true }
   }
 
-  /*
-   * Continues reading an array until it is closed.
-   * If the passed in function is defined at the current token
-   * it is called.  Otherwise the following actions are taken
-   * <ul>
-   * <li>NotAvailable: return. The JSON stream has ended.  Shouldn't happen</li>
-   * <li>EndArray: return. The JSON array has ended.</li>
-   * <li>StartObjoct: call readObject with the eat() handler.  Just consumes
-   * tokens from the embedded object</li>
-   * <li>StartArray: call readArray with the eat() handler.  Just consumes
-   * tokens from the embedded array</li>
-   * <li>Anything else: noop</li>
+  /**
+   * Reads the body of an array upto the close-bracket. 
+   * The given function MUST either fully read the corresponding value 
+   * or skip it.  Not doing so will leave the parser in an unpredictable state.
    */
-  def readArray(fn: ParseFunc):Unit = {
-    next () match {
-      case token if fn.isDefinedAt(token) => {
-        fn(token)
+  def readArrayBody(fn: ArrayParseFunc) {
+    @tailrec def loop(index: Int) {
+      if (peek() == EndArray) {
+        next() // skip ]
+      } else {
+        fn(index)
+        loop(index + 1)
       }
-      case NotAvailable => return
-      case EndArray => return
-      case StartArray => startArray(eat)
-      case StartObject => startObject(eat)
-      case _ => //noop
     }
-    readArray(fn)
+    loop(0)
+  }
+
+  /**
+   * Reads an array using an accumulator.
+   * The given function MUST either fully read the corresponding value 
+   * or skip it.  Not doing so will leave the parser in an unpredictable state.
+   */
+  def foldArray[T](start: T)(fn: (T,Int) => T): T = {
+    startArray()
+    foldArrayBody(start)(fn)
+  }
+
+  /**
+   * Reads an array using an accumulator.
+   * The given function MUST either fully read the corresponding value 
+   * or skip it.  Not doing so will leave the parser in an unpredictable state.
+   */
+  def foldArrayBody[T](start: T)(fn: (T,Int) => T): T = {
+    @tailrec def loop(accum: T, index: Int): T = {
+      if (peek() == EndArray) {
+        next() // skip ]
+        accum
+      } else {
+        loop(fn(accum, index), index + 1)
+      }
+    }
+    loop(start, 0)
+  }
+
+  /**
+   * If the next value is "null", it is read and returned.  Otherwise,
+   * nothing happens.
+   */
+  def readNullOption(): Option[Null] = peek() match {
+    case ValueNull => next(); Some(null)
+    case _ => None
   }
 
   /**
    * reads a field of type Any
    */
-  def readField() = {
-    next() match {
-      case ValueScalar(rv) => rv
-      case _ => throw new IllegalArgumentException("tried to read a non-scalar field as a string")
+  def readScalar(): Any = next() match {
+    case scalar: ValueScalar => scalar.value
+    case token => unexpected(token, "scalar")
+  }
+
+  /**
+   * reads a string value.  Throws a
+   * JsonParseException if the current value isn't a string
+   */
+  def readString(): String = next() match {
+    case scalar: ValueScalar => scalar.value.toString
+    case token => unexpected(token, "string (or any scalar)")
+  }
+
+  /**
+   * reads a string value or null.  Throws a
+   * JsonParseException if the current value isn't a string
+   */
+  def readStringOption(): Option[String] = next() match {
+    case ValueNull => None
+    case scalar: ValueScalar => Some(scalar.value.toString)
+    case token => unexpected(token, "string (or any scalar)")
+  }
+
+  /**
+   * reads a boolean value.  throws a JsonParseException if
+   * the current value isn't a boolean.
+   */
+  def readBoolean(): Boolean = next() match {
+    case ValueBoolean(rv) => rv
+    case token => unexpected(token, "boolean")
+  }
+
+  /**
+   * reads a boolean value or null.  throws a JsonParseException if
+   * the current value isn't a boolean.
+   */
+  def readBooleanOption(): Option[Boolean] = next() match {
+    case ValueNull => None
+    case ValueBoolean(rv) => Some(rv)
+    case token => unexpected(token, "boolean")
+  }
+
+  /**
+   * reads a long value.  Throws a
+   * JsonParseException if the current value isn't a long
+   */
+  def readLong(): Long = next() match {
+    case ValueLong(rv) => rv
+    case token => unexpected(token, "integer")
+  }
+
+  /**
+   * reads a long value or null.  Throws a
+   * JsonParseException if the current value isn't a long
+   */
+  def readLongOption(): Option[Long] = next() match {
+    case ValueNull => None
+    case ValueLong(rv) => Some(rv)
+    case token => unexpected(token, "integer")
+  }
+
+  /**
+   * reads an int value.  Throws a
+   * JsonParseException if the current value isn't a long
+   */
+  def readInt(): Int = next() match {
+    case ValueLong(rv) => rv.toInt
+    case token => unexpected(token, "integer")
+  }
+
+  /**
+   * reads an int value or null.  Throws a
+   * JsonParseException if the current value isn't a long
+   */
+  def readIntOption(): Option[Int] = next() match {
+    case ValueNull => None
+    case ValueLong(rv) => Some(rv.toInt)
+    case token => unexpected(token, "integer")
+  }
+
+  /**
+   * reads a double value.  Throws a
+   * JsonParseException if the current value isn't a double or a long
+   */
+  def readDouble(): Double = next() match {
+    case ValueDouble(rv) => rv
+    case ValueLong(rv) => rv
+    case token => unexpected(token, "double")
+  }
+
+  /**
+   * reads a double value or null.  Throws a
+   * JsonParseException if the current value isn't a double or a long
+   */
+  def readDoubleOption(): Option[Double] = next() match {
+    case ValueNull => None
+    case ValueDouble(rv) => Some(rv)
+    case ValueLong(rv) => Some(rv)
+    case token => unexpected(token, "double")
+  }
+
+  /**
+   * Reads the entire next value as JSON encoded string.
+   */
+  def readNextAsJsonString() = {
+    val buf = new StringWriter
+    val out = Streamy.factory.createJsonGenerator(buf)
+    def copyNext() {
+      next() match {
+        case ValueNull =>
+          out.writeNull()
+        case ValueBoolean(v) =>
+          out.writeBoolean(v)
+        case ValueLong(v) =>
+          out.writeNumber(v)
+        case ValueDouble(v) =>
+          out.writeNumber(v)
+        case ValueString(v) =>
+          out.writeString(v)
+        case StartObject =>
+          out.writeStartObject()
+          readObjectBody {
+            case name =>
+              out.writeFieldName(name)
+              copyNext()
+          }
+          out.writeEndObject()
+        case StartArray =>
+          out.writeStartArray()
+          readArrayBody(_ => copyNext())
+          out.writeEndArray()
+        case token => unexpected(token, "something something")
+      }
+    }
+    copyNext()
+    out.flush()
+    buf.toString
+  }
+
+  /**
+   * Skips past the next value (not just the next token), fast-forwarding to
+   * an object or array end if at an object or array start.
+   */
+  def skipNext() {
+    next()
+    skipCurrent()
+  }
+
+  /**
+   * Skips past the current value (not just the current token), fast-forwarding to
+   * an object or array end if at an object or array start.
+   */
+  def skipCurrent() {
+    current match {
+      case StartObject => skipToObjectEnd()
+      case StartArray => skipToArrayEnd()
+      case _ => // nothing to do
     }
   }
 
   /**
-   * reads a string field.  Throws an
-   * IllegalArgumentException if the current value isn't a string
+   * Fast-forwards to the first EndObject at the same level or a higher
+   * (less-nested) level.
    */
-  def readStringField() = {
-    next() match {
-      case ValueScalar(rv) => rv.toString
-      case _ => throw new IllegalArgumentException("tried to read a non-scalar field as a string")
-    }
+  def skipToObjectEnd() {
+    while (next() != EndObject) skipCurrent()
   }
 
   /**
-   * reads a long field.  Throws an
-   * IllegalArgumentException if the current value isn't a long
+   * Fast-forwards to the first array end at the same level or a higher
+   * (less-nested) level.
    */
-  def readLongField() = {
-    next() match {
-      case ValueLong(rv) => rv
-      case _ => throw new IllegalArgumentException("tried to read a non-int field as a long")
-    }
+  def skipToArrayEnd() {
+    while (next() != EndArray) skipCurrent()
   }
 
-  /**
-   * reads a double field.  Throws an
-   * IllegalArgumentException if the current value isn't a double or a long
-   */
-  def readDoubleField(): Double = {
-    next() match {
-      case ValueDouble(rv) => rv
-      case ValueLong(rv) => rv
-      case _ => throw new IllegalArgumentException("tried to read a non-numeric field as a double")
+  def unexpected(token: StreamyToken, expecting: String) = {
+    token match {
+      case NotAvailable => throw new JsonParseException("Unexpected end of input", location)
+      case _ => throw new JsonParseException("Expecting " + expecting + ", found " + token, location)
     }
   }
 }
