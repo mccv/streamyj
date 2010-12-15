@@ -7,6 +7,24 @@ import scala.collection.mutable.ListBuffer
 
 object StreamySpec extends Specification {
   "Streamy" should {
+    "next() advances and returns next token" in {
+      val s = Streamy("1 2 3 4")
+      s.next() mustEqual ValueLong(1)
+      s.next() mustEqual ValueLong(2)
+      s.next() mustEqual ValueLong(3)
+      s.next() mustEqual ValueLong(4)
+    }
+
+    "peek() doesn't advance" in {
+      val s = Streamy("1 2 3 4")
+      s.peek() mustEqual ValueLong(1)
+      s.peek() mustEqual ValueLong(1)
+      s.next() mustEqual ValueLong(1)
+      s.peek() mustEqual ValueLong(2)
+      s.peek() mustEqual ValueLong(2)
+      s.next() mustEqual ValueLong(2)
+    }
+    
     "handle scalar values" in {
       val s = Streamy("true false 123456789 3.1415927 \"hello world\"")
       s.readBoolean() must beTrue

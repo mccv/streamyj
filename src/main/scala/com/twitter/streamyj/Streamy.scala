@@ -3,7 +3,6 @@ package com.twitter.streamyj
 import java.io.{File, Reader, StringWriter}
 import org.codehaus.jackson._
 import org.codehaus.jackson.JsonToken._
-import scala.annotation.tailrec
 
 /**
  * Just store the PartialFunction type for parse functions so
@@ -62,11 +61,8 @@ class Streamy(parser: JsonParser) {
    * Looks at the next token without consuming it.
    */
   def peek(): StreamyToken = {
-    peekedToken match {
-      case NotAvailable =>
-        peekedToken = StreamToken(parser)
-      case _ =>
-    }
+    if (peekedToken == NotAvailable)
+      peekedToken = StreamToken(parser)
     peekedToken
   }
 
@@ -113,7 +109,7 @@ class Streamy(parser: JsonParser) {
 
   /**
    * Reads an object from open-curly to close-curly. Any field name not
-   * recognized by the given PartialFunction will be skipped.  
+   * recognized by the given PartialFunction will be skipped.
    * If the PartialFunction matches a field name, it MUST either fully
    * read the corresponding value or skip it.  Not doing so will leave
    * the parser in an unpredictable state.
@@ -143,7 +139,7 @@ class Streamy(parser: JsonParser) {
    * the parser in an unpredictable state.
    */
   def readObjectBody(fn: ObjectParseFunc) {
-    @tailrec def loop() {
+    def loop() {
       next() match {
         case EndObject => // done
         case FieldName(name) =>
@@ -173,7 +169,7 @@ class Streamy(parser: JsonParser) {
    * the parser in an unpredictable state.
    */
   def foldObjectBody[T](start: T)(fn: PartialFunction[(T,String), T]): T = {
-    @tailrec def loop(accum: T): T = {
+    def loop(accum: T): T = {
       next() match {
         case EndObject => accum
         case FieldName(name) =>
@@ -218,7 +214,7 @@ class Streamy(parser: JsonParser) {
    * applies the supplied function to the current
    * JSON array.  Note that the current token should
    * be the start of the array (either an opening bracket or null)
-   * The given function MUST either fully read the corresponding value 
+   * The given function MUST either fully read the corresponding value
    * or skip it.  Not doing so will leave the parser in an unpredictable state.
    */
   def readArray(fn: ArrayParseFunc) {
@@ -230,7 +226,7 @@ class Streamy(parser: JsonParser) {
    * applies the supplied function to the current
    * JSON array.  Note that the current token should
    * be the start of the array (either an opening bracket or null)
-   * The given function MUST either fully read the corresponding value 
+   * The given function MUST either fully read the corresponding value
    * or skip it.  Not doing so will leave the parser in an unpredictable state.
    */
   def readArrayOption(fn: ArrayParseFunc): Boolean = {
@@ -238,12 +234,12 @@ class Streamy(parser: JsonParser) {
   }
 
   /**
-   * Reads the body of an array upto the close-bracket. 
-   * The given function MUST either fully read the corresponding value 
+   * Reads the body of an array upto the close-bracket.
+   * The given function MUST either fully read the corresponding value
    * or skip it.  Not doing so will leave the parser in an unpredictable state.
    */
   def readArrayBody(fn: ArrayParseFunc) {
-    @tailrec def loop(index: Int) {
+    def loop(index: Int) {
       if (peek() == EndArray) {
         next() // skip ]
       } else {
@@ -256,7 +252,7 @@ class Streamy(parser: JsonParser) {
 
   /**
    * Reads an array using an accumulator.
-   * The given function MUST either fully read the corresponding value 
+   * The given function MUST either fully read the corresponding value
    * or skip it.  Not doing so will leave the parser in an unpredictable state.
    */
   def foldArray[T](start: T)(fn: (T,Int) => T): T = {
@@ -266,11 +262,11 @@ class Streamy(parser: JsonParser) {
 
   /**
    * Reads an array using an accumulator.
-   * The given function MUST either fully read the corresponding value 
+   * The given function MUST either fully read the corresponding value
    * or skip it.  Not doing so will leave the parser in an unpredictable state.
    */
   def foldArrayBody[T](start: T)(fn: (T,Int) => T): T = {
-    @tailrec def loop(accum: T, index: Int): T = {
+    def loop(accum: T, index: Int): T = {
       if (peek() == EndArray) {
         next() // skip ]
         accum
