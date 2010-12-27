@@ -17,25 +17,27 @@ object Streamy {
    */
   val factory = new JsonFactory()
 
-  def apply(source: String): Streamy = apply(factory.createJsonParser(source))
-  def apply(reader: Reader): Streamy = apply(factory.createJsonParser(reader))
-  def apply(file: File): Streamy = apply(factory.createJsonParser(file))
-  def apply(parser: JsonParser): Streamy = new Streamy(parser)
+  def apply(source: String): Streamy = apply(factory.createJsonParser(source), source)
+  def apply(reader: Reader): Streamy = apply(factory.createJsonParser(reader), reader.toString)
+  def apply(file: File): Streamy = apply(factory.createJsonParser(file), file.getPath)
+  def apply(parser: JsonParser): Streamy = apply(parser, parser.toString)
+  def apply(parser: JsonParser, src: => String ): Streamy = new Streamy(parser, src)
 }
 
 /**
  * A helper for the Jackson JSON parser.
  *
  * Streamy allows you to write streaming parsers in an elegant,
- * Scala-idiomatic manner.  A quick example:
- *
+ * Scala-idiomatic manner.
  */
-class Streamy(parser: JsonParser) {
+class Streamy(parser: JsonParser, val source: String) {
   import Streamy.ObjectParseFunc
   import Streamy.ArrayParseFunc
 
   private var currentToken: StreamyToken = NotAvailable
   private var peekedToken: StreamyToken = NotAvailable
+
+  override def toString = "Streamy(" + source + ")"
 
   /**
    * Advances the parser and sets the current token.
