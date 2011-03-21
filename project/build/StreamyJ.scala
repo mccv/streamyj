@@ -1,7 +1,10 @@
 import sbt._
 import com.twitter.sbt._
 
-class StreamyJProject(info: ProjectInfo) extends StandardProject(info) with SubversionPublisher
+class StreamyJProject(info: ProjectInfo) extends StandardProject(info)
+with SubversionPublisher
+with PublishSourcesAndJavadocs
+with PublishSite
 {
   val jackson = "org.codehaus.jackson" % "jackson-core-asl" % "1.5.2"
   val objenesis = "org.objenesis" % "objenesis" % "1.1"
