@@ -24,7 +24,7 @@ object StreamySpec extends Specification {
       s.peek() mustEqual ValueLong(2)
       s.next() mustEqual ValueLong(2)
     }
-    
+
     "handle scalar values" in {
       val s = Streamy("true false 123456789 3.1415927 \"hello world\"")
       s.readBoolean() must beTrue
@@ -129,7 +129,7 @@ object StreamySpec extends Specification {
         }
       }
       s.readArray(fn)
-      seen.toList mustEqual Range(0, 4).toList
+      seen.toList mustEqual 0.until(4).toList
     }
 
     "foldArray" in {
